@@ -61,8 +61,9 @@ func RunServer() {
 	})
 
 	if err := g.Wait(); err != nil {
-		glog.Warning("\n errgroup error: ", err)
+		glog.Fatalln("\n errgroup error: ", err)
 	}
+	// 由于 glog.Fatalln 这一步在当前环境实际不会运行
 	glog.V(3).Infoln(fmt.Sprintf("all group done!"))
 }
 
