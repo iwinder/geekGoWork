@@ -1,8 +1,8 @@
 syntax = "proto3";
-package user;
-option go_package = "github.com/iwinder/geekGoWork/api/week04";
+package github.com.iwinder.user;
+option go_package = "week04/";
 
-message User {
+message UserInfo {
   string nickname = 1;
   string username = 2;
   string password = 3;
@@ -12,18 +12,15 @@ message User {
 message UserRep {
   string nickname = 1;
   string username = 2;
-  string password = 3;
-  uint64 uid = 4;
+  uint64 uid = 3;
 }
 
-message CreateUserRequest {
-  User user = 1;
-}
+
 
 message UserInfoReply {
   UserRep user = 1;
 }
 service UserService {
-  rpc CreateUser (CreateUserRequest) returns (UserInfoReply) {} // 新增用户信息
-  rpc GetUserInfo (CreateUserRequest) returns (UserInfoReply) {} // 获取用户信息
+  rpc CreateUser (UserInfo) returns (UserInfoReply) {} // 新增用户信息
+  rpc GetUserInfo (UserInfo) returns (UserInfoReply) {} // 获取用户信息
 }
