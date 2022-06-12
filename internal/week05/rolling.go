@@ -55,9 +55,10 @@ func NewHealthCounts() *HealthCounts {
 	}
 }
 
+// NewRollingWindow 新建实例
 func NewRollingWindow(opt *opt.RollingOption) *RollingWindow {
 	if opt.TimeInMilliseconds%opt.LimitBucket != 0 {
-		fmt.Errorf("the timeInMilliseconds must divide equally into numberOfBuckets. For example 1000/10 is ok, 1000/11 is not")
+		fmt.Errorf("the timeInMilliseconds must divide equally into limitBucket. For example 1000/10 is ok, 1000/11 is not")
 	}
 	r := &RollingWindow{
 		timeInMilliseconds: opt.TimeInMilliseconds,
@@ -93,36 +94,20 @@ func (r *RollingWindow) RunWindow() {
 }
 
 // CheckBroken 检测是否阻塞
-func (r *RollingWindow) CheckBroken() {
-	for {
-		select {
-		case <-r.done:
-			glog.V(2).Infoln("RollingWindow ShutDone CheckBreak...")
-			return
-		default:
-			if r.brokenFlag {
-				if r.getBrokenTimeFlag() {
-					r.Lock()
-					r.brokenFlag = false
-					r.Unlock()
-				}
-				//return
-				continue
-			}
-			if r.getBreakJudgementState() {
-				r.Lock()
-				r.brokenFlag = true
-				r.lastBreakTime = getNowTimeInMs()
-				glog.V(2).Infoln("RollingWindow need brokenFlag...")
-				r.Unlock()
-			}
+func (r *RollingWindow) CheckBroken() bool {
+	r.Lock()
+	defer r.Unlock()
+	if r.brokenFlag {
+		if r.getBrokenTimeFlag() {
+			r.brokenFlag = false
 		}
-
+		return r.brokenFlag
 	}
-}
-
-// get
-func (r *RollingWindow) GetBlokenFlag() bool {
+	if r.getBreakJudgementState() {
+		r.brokenFlag = true
+		r.lastBreakTime = getNowTimeInMs()
+		glog.V(2).Infoln("RollingWindow need brokenFlag...")
+	}
 	return r.brokenFlag
 }
 
@@ -158,7 +143,6 @@ func (r *RollingWindow) appendBucket() {
 	}
 	r.buckets = append(r.buckets, NewBucket())
 	if !(len(r.buckets) < r.limitBucket+1) {
-		// 放弃第一个桶之前，先将之前的总计数清空
 		r.buckets = r.buckets[1:]
 	}
 }
@@ -182,25 +166,28 @@ func (r *RollingWindow) peekLast() *Bucket {
 
 // 获取是否需要熔断
 func (r *RollingWindow) getBreakJudgementState() bool {
-	r.Lock()
-	defer r.Unlock()
 	r.hc.TotalRequests = 0
 	r.hc.ErrorRequests = 0
 	for _, v := range r.buckets {
 		r.hc.TotalRequests += v.TotalCount
 		r.hc.ErrorRequests += v.ErrorCount
 	}
-	r.hc.ErrorPercentage = float64(r.hc.TotalRequests) / float64(r.hc.ErrorRequests)
+	if r.hc.ErrorRequests == 0 {
+		r.hc.ErrorPercentage = 0
+	} else {
+		r.hc.ErrorPercentage = float64(r.hc.TotalRequests) / float64(r.hc.ErrorRequests)
+	}
+
 	glog.V(2).Infoln("RollingWindow getBreakJudgementState...", r.hc.TotalRequests, r.hc.ErrorRequests, r.hc.ErrorPercentage)
 	// 如果超过失败率或者超过总请求数 则触发熔断
-	if r.hc.ErrorPercentage > r.errorPercentage || r.hc.TotalRequests > r.limitCount {
+	if r.hc.ErrorPercentage >= r.errorPercentage || r.hc.TotalRequests >= r.limitCount {
 		return true
 	}
 	return false
 }
+
+// 获取当前时间是否已过熔断间隔时间
 func (r *RollingWindow) getBrokenTimeFlag() bool {
-	r.Lock()
-	defer r.Unlock()
 	currentTime := getNowTimeInMs()
 	return r.lastBreakTime+r.brokenTimePeriod > currentTime
 }

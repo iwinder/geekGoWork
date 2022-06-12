@@ -22,17 +22,17 @@ import (
 func RunServer() {
 	// 日志打印配置
 	flag.Set("v", "5")
-	//flag.Set("logtostderr", "false")
+	flag.Set("logtostderr", "true")
 	flag.Set("stderrthreshold", "0")
 
-	flag.Set("log_dir", "/home/wind/logs/golang/")
+	//flag.Set("log_dir", "/home/wind/logs/golang/")
 
 	flag.Parse()
 	defer glog.Flush()
 	glog.V(3).Infoln(fmt.Sprintf("http server start..."))
 
 	// 滑动窗口
-	rolOpt := configs.NewRollingOption(20000, 10, 5, 1000, 3000)
+	rolOpt := configs.NewRollingOption(2000, 10, 5, 0, 100)
 	rollingWindow := NewRollingWindow(rolOpt)
 
 	// 创建 errgroup
@@ -45,7 +45,7 @@ func RunServer() {
 	g.Go(func() error {
 		rollingWindow.RunWindow()
 		// 检测并更新锁定状态
-		rollingWindow.CheckBroken()
+		//rollingWindow.CheckBroken()
 		return nil
 	})
 	// g1 启动 http server
@@ -74,7 +74,7 @@ func RunServer() {
 		case <-serverOut: //
 			glog.Warning("server will out...")
 		}
-		rollingWindow.ShutDone(ctx)
+		rollingWindow.ShutDone(ctx) // 关闭滑动窗口
 		return server.Shutdown(ctx) // 关闭 http server
 	})
 
@@ -103,7 +103,7 @@ func newServeMux(serverOut chan struct{}, roll *RollingWindow) *http.ServeMux {
 		glog.V(2).Infoln("Entering shutdown Handler...")
 		serverOut <- struct{}{}
 	})
-	mux.HandleFunc("/", routeHandler)
+	mux.HandleFunc("/", handleFillter(routeHandler, roll))
 	return mux
 }
 
@@ -133,7 +133,8 @@ func handleFillter(h http.HandlerFunc, roll *RollingWindow) http.HandlerFunc {
 			io.Copy(w, dec)
 			return
 		}
-		if roll.GetBlokenFlag() {
+
+		if roll.CheckBroken() { // 检测是否在熔断期间
 			roll.ShowAllBucket()
 			glog.V(3).Infoln(fmt.Sprintf("http roll reject by hystrix..."))
 			http.Error(w, "reject by hystrix", http.StatusInternalServerError)
