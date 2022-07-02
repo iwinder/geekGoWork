@@ -3,6 +3,7 @@ package week08
 import (
 	"context"
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"time"
 )
 
-func IntRun(alsiz int) {
+func IntRun(alsiz int, flag bool) {
 	sizes := []int{
 		10000,
 		25000,
@@ -46,27 +47,51 @@ func IntRun(alsiz int) {
 
 	var key string
 	for _, size := range sizes {
+		client.FlushDB(ctx)
 		// log memory info before
 		before, err := client.Info(ctx, "memory").Result()
 		if err != nil {
 			log.Fatal(err.Error())
 		}
+		alen := len("used_memory_dataset:")
+		beforeBeginPos := strings.Index(before, "used_memory_dataset:") + alen
+		beforeEndPos := strings.Index(before, "\r\nused_memory_dataset_perc:")
+		bsize := before[beforeBeginPos:beforeEndPos]
 		for i := 0; i < size; i++ {
 			key = strconv.Itoa(i)
+			if flag {
+				key = uuid.New().String()
+			}
+
 			client.Set(ctx, key, str.String(), 0)
 		}
 		after, err := client.Info(ctx, "memory").Result()
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-
-		name := "./docs/week08/q2/" + strconv.Itoa(lsiz) + "result_" + strconv.Itoa(size) + ".log"
+		afterBeginPos := strings.Index(after, "used_memory_dataset:") + alen
+		afterEndPos := strings.Index(after, "\r\nused_memory_dataset_perc:")
+		asize := after[afterBeginPos:afterEndPos]
+		var typeFlag string = "type2"
+		if flag {
+			typeFlag = "type1"
+		}
+		name := "./docs/week08/q2/" + typeFlag + "/" + strconv.Itoa(lsiz) + "/" + strconv.Itoa(lsiz) + "result_" + strconv.Itoa(size) + ".log"
 
 		fer := ioutil.WriteFile(
 			name,
 			[]byte("before:  \n"+before+"\n\n"+"after: \n"+after),
 			0644,
 		)
+		afsize, aferr := strconv.ParseFloat(asize, 64)
+		if aferr != nil {
+			log.Fatal(aferr.Error())
+		}
+		bfsize, bferr := strconv.ParseFloat(bsize, 64)
+		if bferr != nil {
+			log.Fatal(bferr.Error())
+		}
+		avg := (afsize - bfsize - float64(alsiz*size)) / float64(size)
 		if fer != nil {
 			log.Fatal(fer.Error())
 		} else {
@@ -76,6 +101,8 @@ func IntRun(alsiz int) {
 			} else {
 				log.Println("写入文件成功", tname)
 			}
+			log.Println("before:", bsize, "after:", afsize, "avg:", avg)
+			log.Println("=====================>>>>>>>>>>>>>>>>>")
 		}
 		client.FlushDB(ctx)
 		time.Sleep(5 * time.Second)
