@@ -91,6 +91,7 @@ func RunTcpFixLength(addr string, types int) {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 	defer glog.Flush()
+
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		glog.Fatalln("TCP Server 启动失败...", err)
